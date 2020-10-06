@@ -4,24 +4,28 @@ import java.time.{Duration, LocalDateTime, ZoneOffset}
 import java.util.{Date, Properties}
 
 import org.apache.kafka.common.serialization.Serdes
+import org.apache.kafka.streams.kstream._
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.StreamsBuilder
 import org.apache.kafka.streams.{StreamsConfig, TestInputTopic, TopologyTestDriver}
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should
 import org.slf4j.LoggerFactory
-//import org.apache.kafka.streams.scala._
-//import org.apache.kafka.streams.scala.kstream._
+import pl.workshop.CustomSerdeFactory
 
-class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterAll {
+class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterEach {
+
+  // Useful links
+  // https://kafka.apache.org/26/documentation/streams/developer-guide/dsl-api.html
+  // https://kafka.apache.org/26/javadoc/index.html?org/apache/kafka/streams/KafkaStreams.html
 
   import org.apache.kafka.streams.scala.Serdes._
 
   var currentTopologyDriver: Option[TopologyTestDriver] = None
   var printTopology = false
 
-  override def afterAll(): Unit = if (currentTopologyDriver.nonEmpty) {
+  override protected def afterEach(): Unit = if (currentTopologyDriver.nonEmpty) {
     currentTopologyDriver.get.close()
     currentTopologyDriver = None
   }
@@ -30,8 +34,8 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     val props = new Properties
     props.put(StreamsConfig.APPLICATION_ID_CONFIG, "test")
     props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:1234")
-    props.setProperty(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass.getName)
-    props.setProperty(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass.getName)
+    props.setProperty(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String.getClass.getName)
+    props.setProperty(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String.getClass.getName)
 
     val topology = sb.build()
     if (printTopology) {
@@ -45,17 +49,15 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
   }
 
   "Kafka Streams" should "be easy" in {
-    val builder: StreamsBuilder = new StreamsBuilder
-
     val sb = new StreamsBuilder
     sb.stream[String, String]("testTopic")
       .to("testOutputTopic")
 
     val td = getTestDriver(sb)
-    val inputTopic = td.createInputTopic("testTopic", Serdes.String().serializer(), Serdes.String().serializer())
+    val inputTopic = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.String.serializer)
     inputTopic.pipeInput("key", "value")
 
-    val outputTopic = td.createOutputTopic("testOutputTopic", Serdes.String().deserializer(), Serdes.String().deserializer())
+    val outputTopic = td.createOutputTopic("testOutputTopic", Serdes.String.deserializer, Serdes.String.deserializer)
 
     val kv = outputTopic.readKeyValue()
     "key" should be(kv.key)
@@ -72,7 +74,7 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     val sb = new StreamsBuilder
 
     val td = getTestDriver(sb)
-    val in = td.createInputTopic("testTopic", Serdes.String().serializer(), Serdes.Integer().serializer())
+    val in = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.Integer.serializer)
     in.pipeInput("key", 1)
     in.pipeInput("key", -1)
     in.pipeInput("key", 2)
@@ -80,15 +82,15 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     in.pipeInput("key", 3)
     in.pipeInput("key", -3)
 
-    val out = td.createOutputTopic("testOutputTopic", Serdes.String().deserializer(), Serdes.Integer().deserializer())
+    val out = td.createOutputTopic("testOutputTopic", Serdes.String.deserializer, Serdes.Integer.deserializer)
 
-    assert(3 == out.getQueueSize)
-    assert(1 == out.readValue())
-    assert(2 == out.readValue())
-    assert(3 == out.readValue())
+    assert(out.getQueueSize == 3)
+    assert(out.readValue() == 1)
+    assert(out.readValue() == 2)
+    assert(out.readValue() == 3)
   }
 
-  it should "add numbers with no sweat" in {
+  it should "count with no sweat" in {
     // return sum of all values in the stream
   }
 
@@ -98,14 +100,23 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     val sb = new StreamsBuilder
 
     val td = getTestDriver(sb)
-    val in = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.Integer().serializer)
+    val in = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.Integer.serializer)
+
     in.pipeInput("apple", 1)
     in.pipeInput("orange", 1)
     in.pipeInput("apple", 9)
     in.pipeInput("orange", 1)
     in.pipeInput("orange", 1)
 
-    var out = td.createOutputTopic("testOutputTopic", Serdes.String().deserializer(), Serdes.Integer().deserializer())
+    var out = td.createOutputTopic("testOutputTopic", Serdes.String.deserializer, Serdes.Integer.deserializer)
+
+    // how many events do you expect?
+    assert(out.getQueueSize == 5)
+    assert(out.readValue() == 1)
+    assert(out.readValue() == 1)
+    assert(out.readValue() == 10)
+    assert(out.readValue() == 2)
+    assert(out.readValue() == 3)
   }
 
   it should "never be bored of counting" in {
@@ -122,7 +133,7 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     val sb = new StreamsBuilder
 
     val td = getTestDriver(sb)
-    val in = td.createInputTopic("testTopic", Serdes.String().serializer(), Serdes.String().serializer())
+    val in = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.String.serializer)
     val zeroTime = LocalDateTime.of(2222, 2, 2, 22, 0).toInstant(ZoneOffset.UTC)
     val minute = Duration.ofMinutes(1)
 
@@ -137,18 +148,21 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     in.pipeInput("Skitek", "wtf", zeroTime.plus(minute.multipliedBy(2)))
     in.pipeInput("Skitek", "wtf", zeroTime.plus(minute.multipliedBy(2)))
     in.pipeInput("Mr. Jenkins", "it's all good", zeroTime)
+
+    val out = td.createOutputTopic("testOutputTopic", WindowedSerdes.timeWindowedSerdeFrom(classOf[String]).deserializer, Serdes.Long.deserializer)
   }
 
   it should "know good or evil" in {
     // given keys in format {prefix}_{key} return count of events per key
     // see how your changes influence topology.
-    printTopology = true
+
+    //    printTopology = true // TODO uncomment me
     // see the logs of a test for printed topology. You can visualize it here: https://zz85.github.io/kafka-streams-viz/
 
     val sb = new StreamsBuilder
 
     val td = getTestDriver(sb)
-    val in = td.createInputTopic("testTopic", Serdes.String().serializer(), Serdes.String().serializer())
+    val in = td.createInputTopic("testTopic", Serdes.String.serializer, Serdes.String.serializer)
     in.pipeInput("very_bad", "evil! evil! evil!")
     in.pipeInput("not really but trying to be_bad", "maybe evil, maybe not")
     in.pipeInput("very_good", "trying to be")
@@ -164,7 +178,7 @@ class WorkshopSpec extends AnyFlatSpec with should.Matchers with BeforeAndAfterA
     val zeroTime = LocalDateTime.of(2222, 2, 2, 22, 0).toInstant(ZoneOffset.UTC)
     in.pipeInput("id1", DataPoint(new Date(zeroTime.toEpochMilli), 1d), zeroTime)
 
-    var sums = td.createOutputTopic("sums", Serdes.String().deserializer(), Serdes.Double().deserializer())
+    var sums = td.createOutputTopic("sums", Serdes.String.deserializer, Serdes.Double.deserializer)
   }
 
   it should "get physical" in {

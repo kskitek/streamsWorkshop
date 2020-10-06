@@ -5,8 +5,8 @@ version := "0.1"
 scalaVersion := "2.13.3"
 
 libraryDependencies ++= Seq(
-//  "org.apache.kafka" % "kafka-streams" % "2.5.0",
-  "org.apache.kafka" %% "kafka-streams-scala" % "2.5.0",
+//  "org.apache.kafka" % "kafka-streams" % "2.5.0", // we can use original java api
+  "org.apache.kafka" %% "kafka-streams-scala" % "2.5.0", // or we can use scala wrapper
   "org.apache.kafka" % "kafka-streams-test-utils" % "2.5.0"
 )
 
